@@ -139,7 +139,7 @@
   <header class="top">
     <div class="brand">
       <h1>D2 Sherpa</h1>
-      <p class="sub">Find a sherpa for your next Destiny 2 raid, or help someone else clear theirs.</p>
+      <p class="sub">Find a sherpa for your next Destiny 2 raid or dungeon, or help someone else clear theirs.</p>
     </div>
     <div class="controls">
       <label for="bungie-id">Bungie ID</label>
@@ -158,12 +158,12 @@
   <!-- HOME: edit the welcome text here whenever you like -->
   <section id="view-home">
     <h2>Welcome to D2 Sherpa</h2>
-    <p>D2 Sherpa connects Destiny 2 players who want help with raids to experienced players who enjoy teaching them. It's free to use.</p>
+    <p>D2 Sherpa connects Destiny 2 players who want help with raids and dungeons to experienced players who enjoy teaching them. It's free to use.</p>
 
     <h3>How it works</h3>
     <ol>
       <li><strong>Enter your Bungie ID</strong> in the box at the top right. The site remembers it for next time.</li>
-      <li><strong>Need help?</strong> Choose <em>Requests</em> from the menu and tell us which raid you want to learn and when suits you.</li>
+      <li><strong>Need help?</strong> Choose <em>Requests</em> from the menu and tell us which raid or dungeon you want to learn and when suits you.</li>
       <li><strong>Want to teach?</strong> Choose <em>Open Requests</em>, find one you'd like to help with and accept it.</li>
       <li><strong>Get together.</strong> Message each other on Bungie or Discord to arrange the run, and find it any time under <em>My Runs</em>. Once you've played it, mark it as completed there and rate each other.</li>
     </ol>
@@ -175,7 +175,7 @@
   <section id="view-requests" hidden>
     <h2>Ask for a sherpa</h2>
     <form id="request-form">
-      <label for="raid">Raid</label>
+      <label for="raid">Activity</label>
       <select id="raid" required></select>
 
       <label for="preferred-time">When would suit you?</label>
@@ -200,9 +200,9 @@
   <section id="view-open" hidden>
     <h2>Open requests</h2>
     <p class="muted">Find one you'd like to help with and press accept. You'll be added as the sherpa using the Bungie ID at the top.</p>
-    <label for="raid-filter">Filter by raid</label>
+    <label for="raid-filter">Filter by activity</label>
     <select id="raid-filter">
-      <option value="">All raids</option>
+      <option value="">All activities</option>
     </select>
     <div id="open-message" class="msg" role="status"></div>
     <div id="requests"><span class="empty">Loading...</span></div>
@@ -242,26 +242,39 @@
   const SUPABASE_URL = 'https://abskuadcnzvwhqtgdxhr.supabase.co';
   const SUPABASE_ANON_KEY = 'sb_publishable_SYfWS6KILw-NHgGTjW9Myw_VDiUagfW';
 
-  // ---- 2. The raid list. Edit this so it matches what is in the game now. ----
-  const RAIDS = [
-  'Salvation\'s Edge',
-  'Crota\'s End',
-  'Root of Nightmares',
-  'King\'s Fall',
-  'Vow of the Disciple',
-  'Vault of Glass',
-  'Deep Stone Crypt',
-  'Garden of Salvation',
-  'Last Wish',
-  'Other / Dungeon'
-];
+  // ---- 2. Raids & Dungeons lists ----
+  const ACTIVITIES = {
+    'Raids': [
+      "Salvation's Edge",
+      "Crota's End",
+      "Root of Nightmares",
+      "King's Fall",
+      "Vow of the Disciple",
+      "Vault of Glass",
+      "Deep Stone Crypt",
+      "Garden of Salvation",
+      "Last Wish"
+    ],
+    'Dungeons': [
+      "Equilibrium",
+      "Sundered Doctrine",
+      "Vesper's Host",
+      "Warlord's Ruin",
+      "Ghosts of the Deep",
+      "Spire of the Watcher",
+      "Duality",
+      "Grasp of Avarice",
+      "Prophecy",
+      "Pit of Heresy",
+      "Shattered Throne"
+    ]
+  };
 
   // ---- 3. Rating tags (these must match the list inside ratings-step.sql) ----
   const SHERPA_TAGS = ['Clear explanations', 'Patient', 'On time', 'Respectful'];   // a learner rating a sherpa
   const LEARNER_TAGS = ['Listened', 'Prepared', 'On time', 'Respectful'];            // a sherpa rating a learner
 
   // ---- 4. Ranking: how many ratings a sherpa needs before they get a rank ----
-  // Set this to 1 while you are testing, then raise it (3 or more) when real people use it.
   const MIN_RATINGS_TO_RANK = 3;
 
   // ---- 5. Reasons people can give when reporting someone (must match report_user in quickwins-step.sql) ----
@@ -271,18 +284,44 @@
   const configured = !SUPABASE_URL.startsWith('PASTE') && !SUPABASE_ANON_KEY.startsWith('PASTE');
   const db = configured ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
-  // Fill the raid dropdown from the list above.
-  for (const raid of RAIDS) {
-    const option = document.createElement('option');
-    option.textContent = raid;
-    $('raid').appendChild(option);
+  // Populate dropdowns with categorized Raids and Dungeons (<optgroup>)
+  function populateActivities() {
+    const raidSelect = $('raid');
+    const filterSelect = $('raid-filter');
 
-    // The same list feeds the "Filter by raid" dropdown on Open Requests.
-    const filterOption = document.createElement('option');
-    filterOption.textContent = raid;
-    $('raid-filter').appendChild(filterOption);
+    raidSelect.replaceChildren();
+    filterSelect.replaceChildren();
+
+    const allFilterOpt = document.createElement('option');
+    allFilterOpt.value = '';
+    allFilterOpt.textContent = 'All activities';
+    filterSelect.appendChild(allFilterOpt);
+
+    for (const [category, items] of Object.entries(ACTIVITIES)) {
+      const groupReq = document.createElement('optgroup');
+      groupReq.label = category;
+
+      const groupFilter = document.createElement('optgroup');
+      groupFilter.label = category;
+
+      for (const act of items) {
+        const optReq = document.createElement('option');
+        optReq.value = act;
+        optReq.textContent = act;
+        groupReq.appendChild(optReq);
+
+        const optFilter = document.createElement('option');
+        optFilter.value = act;
+        optFilter.textContent = act;
+        groupFilter.appendChild(optFilter);
+      }
+
+      raidSelect.appendChild(groupReq);
+      filterSelect.appendChild(groupFilter);
+    }
   }
 
+  populateActivities();
   $('raid-filter').addEventListener('change', loadRequests);
 
   // ---- Menu: show one section at a time ----
@@ -307,20 +346,17 @@
     box.className = isError ? 'msg error' : 'msg ok';
   }
 
-  // Bungie names look like Guardian#1234 (a name, a #, then four digits).
   function isValidBungieName(name) {
     return /^.{1,32}#\d{4}$/.test(name);
   }
 
-  // Remember the name in this browser so you don't retype it every time.
   function rememberName(name) {
-    try { localStorage.setItem('bungieName', name); } catch (e) { /* not available, that's fine */ }
+    try { localStorage.setItem('bungieName', name); } catch (e) { }
   }
   function recallName() {
     try { return localStorage.getItem('bungieName') || ''; } catch (e) { return ''; }
   }
 
-  // Reads the Bungie ID from the top box. If it's missing or wrong, shows a message and returns null.
   function requireBungieId(messageId) {
     const name = $('bungie-id').value.trim();
     if (!isValidBungieName(name)) {
@@ -332,7 +368,6 @@
     return name;
   }
 
-  // Small helper to build an element safely (text is never treated as HTML).
   function el(tag, className, text) {
     const node = document.createElement(tag);
     if (className) node.className = className;
@@ -350,7 +385,6 @@
     return days + (days === 1 ? ' day ago' : ' days ago');
   }
 
-  // Find the player by Bungie name, or add them the first time we see them.
   async function findOrCreateUser(bungieName) {
     const { data: existing, error: findError } = await db
       .from('users')
@@ -371,8 +405,6 @@
 
   // ---- Open requests ----
 
-  // Accepting is done by one database function, so it either fully happens or not at all.
-  // The database also checks the request is still open and that nobody is blocked.
   async function acceptRequest(request, sherpaName) {
     const sherpaId = await findOrCreateUser(sherpaName);
     const { error } = await db.rpc('accept_request', { p_request_id: request.id, p_sherpa_id: sherpaId });
@@ -447,7 +479,7 @@
       return;
     }
     list.replaceChildren();
-    // Apply the raid filter, and hide requests from people I have blocked.
+
     const blocked = await currentBlockedIds();
     const raidFilter = $('raid-filter').value;
     const visible = data.filter((request) =>
@@ -465,25 +497,24 @@
 
   // ---- My runs ----
 
-  // Gets every run this player is part of, as the sherpa or as the learner.
   async function fetchMyRuns(userId) {
-    // Runs where I am the sherpa (the learner is on the request).
+    // Runs where I am the sherpa
     const { data: asSherpa, error: sherpaError } = await db
       .from('runs')
       .select('id, created_at, completed_at, request:requests!request_id(raid, preferred_time, experience, note, learner:users!learner_id(id, bungie_name))')
       .eq('sherpa_id', userId);
     if (sherpaError) throw sherpaError;
 
-    // Accepted requests where I am the learner (the sherpa is on the run).
+    // Requests where I am the learner (include accepted AND completed)
     const { data: asLearner, error: learnerError } = await db
       .from('requests')
       .select('raid, preferred_time, experience, note, runs(id, created_at, completed_at, sherpa:users!sherpa_id(id, bungie_name))')
       .eq('learner_id', userId)
-      .eq('status', 'accepted');
+      .in('status', ['accepted', 'completed']);
     if (learnerError) throw learnerError;
 
     const items = [];
-    for (const run of asSherpa) {
+    for (const run of asSherpa || []) {
       if (!run.request) continue;
       items.push({
         run_id: run.id,
@@ -498,8 +529,7 @@
         created_at: run.created_at
       });
     }
-    for (const request of asLearner) {
-      // Depending on how the tables link, "runs" comes back as one item or a list.
+    for (const request of asLearner || []) {
       const run = Array.isArray(request.runs) ? request.runs[0] : request.runs;
       if (!run) continue;
       items.push({
@@ -521,8 +551,6 @@
 
   // ---- Safety: block and report ----
 
-  // The ids of people I have blocked, used to hide their requests. Best effort:
-  // if anything goes wrong we simply don't hide anyone.
   async function currentBlockedIds() {
     const ids = new Set();
     try {
@@ -532,12 +560,10 @@
       if (!user) return ids;
       const { data } = await db.rpc('my_blocks', { p_user_id: user.id });
       for (const row of data || []) ids.add(row.user_id);
-    } catch (err) { /* ignore */ }
+    } catch (err) { }
     return ids;
   }
 
-  // "Block" and "Report" links shown under a person's request or run.
-  // other = { id, name }. messageId = which message box to show feedback in.
   function buildSafetyActions(other, runId, messageId, afterBlock) {
     const wrap = el('div', 'actions');
 
@@ -605,7 +631,6 @@
     return wrap;
   }
 
-  // The list of people I have blocked, with an Unblock button for each.
   async function fetchBlocked(userId) {
     const { data, error } = await db.rpc('my_blocks', { p_user_id: userId });
     if (error) throw error;
@@ -665,7 +690,6 @@
     setMessage('runs-message', 'Request cancelled.', false);
   }
 
-  // Shows my requests that are still waiting for a sherpa, each with a Cancel button.
   function renderMyRequests(container, requests, userId) {
     container.replaceChildren();
     if (requests.length === 0) return;
@@ -688,7 +712,6 @@
       card.appendChild(cancel);
       container.appendChild(card);
     }
-    container.appendChild(el('h3', null, 'Your runs'));
   }
 
   async function markCompleted(item, userId, button) {
@@ -705,8 +728,6 @@
 
   // ---- Ratings ----
 
-  // Asks the database what rating state each of my runs is in.
-  // (The database only includes the other person's rating once I have rated too.)
   async function fetchRatingStates(userId) {
     const { data, error } = await db.rpc('my_rating_states', { p_user_id: userId });
     if (error) throw error;
@@ -715,7 +736,6 @@
     return byRun;
   }
 
-  // One line showing a rating: stars, tags and comment.
   function ratingLine(label, rating) {
     const row = el('div', 'rating-line');
     row.appendChild(el('strong', null, label + ': '));
@@ -729,12 +749,10 @@
     return row;
   }
 
-  // The "Rate ..." form that opens when you click it.
   function buildRatingForm(item, userId, state) {
     const details = el('details', 'rate');
     details.appendChild(el('summary', null, 'Rate ' + item.other));
 
-    // Star buttons: click one to set the score.
     let stars = 0;
     const starButtons = [];
     const starRow = el('div', 'stars');
@@ -751,7 +769,6 @@
     }
     details.appendChild(starRow);
 
-    // Tags: which ones you can tick depends on who you are rating.
     const tagList = item.role === 'learner' ? SHERPA_TAGS : LEARNER_TAGS;
     const tagBox = el('div', 'tags');
     const checkboxes = [];
@@ -810,7 +827,6 @@
     return details;
   }
 
-  // Decides what to show under a run: the form, a "waiting" note, or both ratings.
   function renderRatingArea(item, state, userId) {
     const box = el('div', 'rating');
     if (!state || !state.i_rated) {
@@ -843,7 +859,6 @@
 
     if (item.note) card.appendChild(el('p', 'req-note', item.note));
     if (item.completed_at) {
-      // Ratings only open once the run has been completed.
       card.appendChild(renderRatingArea(item, state, userId));
     } else {
       const waiting = el('div', 'rating');
@@ -865,7 +880,9 @@
 
   async function loadMyRuns() {
     const list = $('my-runs');
+    const myReqList = $('my-requests');
     list.replaceChildren();
+    myReqList.replaceChildren();
     setMessage('runs-message', '', false);
 
     if (!configured) {
@@ -892,12 +909,24 @@
         return;
       }
 
-      const [runs, states] = await Promise.all([fetchMyRuns(user.id), fetchRatingStates(user.id)]);
+      const [myRequests, runs, states] = await Promise.all([
+        fetchMyOpenRequests(user.id),
+        fetchMyRuns(user.id),
+        fetchRatingStates(user.id)
+      ]);
       rememberName(name);
+
+      renderMyRequests(myReqList, myRequests, user.id);
+
       if (runs.length === 0) {
         list.appendChild(el('span', 'empty', 'No runs yet. Accept a request, or wait for a sherpa to accept yours.'));
         return;
       }
+
+      if (myRequests.length > 0) {
+        list.appendChild(el('h3', null, 'Your runs'));
+      }
+
       for (const item of runs) list.appendChild(renderRun(item, states.get(item.run_id), user.id));
     } catch (err) {
       list.replaceChildren();
@@ -929,7 +958,6 @@
       container.appendChild(el('div', 'req-meta', 'Joined ' + new Date(profile.joined).toLocaleDateString()));
     }
 
-    // Where you stand in the ranking
     const rankBox = el('div', 'rank-box');
     if (profile.runs_as_sherpa === 0) {
       rankBox.textContent = "You haven't taught a run yet. Accept a request under Open Requests to start building your sherpa record.";
@@ -944,7 +972,6 @@
     }
     container.appendChild(rankBox);
 
-    // Your numbers
     const grid = el('div', 'stats');
     grid.appendChild(statTile(profile.runs_as_sherpa, 'Runs taught'));
     grid.appendChild(statTile(profile.sherpa_ratings, 'Ratings received'));
@@ -993,7 +1020,6 @@
       for (const title of ['Rank', 'Sherpa', 'Average', 'Ratings', 'Runs']) header.appendChild(el('th', null, title));
       table.appendChild(header);
 
-      // Show the top 10, plus your own row if you are further down.
       const top = ranked.slice(0, 10);
       for (const row of top) table.appendChild(rankRow(row, row.user_id === myUserId));
       const mine = ranked.find((row) => row.user_id === myUserId);
@@ -1017,8 +1043,10 @@
   async function loadProfile() {
     const stats = $('profile-stats');
     const board = $('leaderboard');
+    const blockedList = $('blocked-list');
     stats.replaceChildren();
     board.replaceChildren();
+    blockedList.replaceChildren();
     setMessage('profile-message', '', false);
 
     if (!configured) {
@@ -1031,7 +1059,6 @@
 
     const name = $('bungie-id').value.trim();
     try {
-      // Look up who you are (if a valid Bungie ID is entered).
       let userId = null;
       if (isValidBungieName(name)) {
         const { data: user, error } = await db
@@ -1043,16 +1070,19 @@
         userId = user ? user.id : null;
       }
 
-      // The ranking is the same for everyone.
       const boardResult = await db.rpc('sherpa_leaderboard', { p_min_ratings: MIN_RATINGS_TO_RANK });
       if (boardResult.error) throw boardResult.error;
 
-      // Your own profile.
       let profile = null;
+      let blocked = [];
       if (userId) {
-        const profileResult = await db.rpc('my_profile', { p_user_id: userId, p_min_ratings: MIN_RATINGS_TO_RANK });
+        const [profileResult, blockedResult] = await Promise.all([
+          db.rpc('my_profile', { p_user_id: userId, p_min_ratings: MIN_RATINGS_TO_RANK }),
+          fetchBlocked(userId)
+        ]);
         if (profileResult.error) throw profileResult.error;
         profile = profileResult.data;
+        blocked = blockedResult;
         rememberName(name);
       }
 
@@ -1060,6 +1090,7 @@
       board.replaceChildren();
       renderProfile(stats, name, profile);
       renderLeaderboard(board, boardResult.data || [], userId);
+      if (userId) renderBlocked(blockedList, blocked, userId);
     } catch (err) {
       stats.replaceChildren();
       board.replaceChildren();
@@ -1103,7 +1134,7 @@
     }
   });
 
-  // ---- Top box: remember the Bungie ID, refresh My Runs if it's open ----
+  // ---- Top box: remember the Bungie ID, refresh active views ----
   $('bungie-id').addEventListener('change', () => {
     const name = $('bungie-id').value.trim();
     if (isValidBungieName(name)) rememberName(name);
