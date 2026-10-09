@@ -1,0 +1,888 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>D2 Sherpa</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --card: #181b22;
+    --line: #2a2f3a;
+    --text: #e8eaf0;
+    --muted: #9aa3b2;
+    --accent: #6ea8fe;
+    --good: #5fd08a;
+    --bad: #ff7b7b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+  }
+  main { max-width: 720px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { margin: 0 0 4px; font-size: 1.7rem; }
+  h2 { margin: 0 0 12px; font-size: 1.1rem; }
+  h3 { margin: 20px 0 8px; font-size: 1rem; }
+  .sub { color: var(--muted); margin: 0; }
+  .muted { color: var(--muted); }
+
+  /* Top bar: title on the left, Bungie ID and menu on the right */
+  .top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 16px 24px;
+    margin-bottom: 24px;
+  }
+  .brand { flex: 1 1 280px; }
+  .controls { flex: 0 0 240px; }
+  .controls label:first-child { margin-top: 0; }
+  @media (max-width: 600px) { .controls { flex: 1 1 100%; } }
+
+  section {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 24px;
+  }
+  label { display: block; font-size: 0.85rem; color: var(--muted); margin: 12px 0 4px; }
+  input, select, textarea {
+    width: 100%;
+    padding: 10px;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    background: var(--bg);
+    color: var(--text);
+    font: inherit;
+  }
+  textarea { min-height: 70px; resize: vertical; }
+  button {
+    margin-top: 16px;
+    padding: 10px 18px;
+    border: 0;
+    border-radius: 8px;
+    background: var(--accent);
+    color: #0b1220;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button:disabled { opacity: 0.6; cursor: wait; }
+  ol { padding-left: 20px; margin: 0; }
+  li { margin-bottom: 8px; }
+  .msg { margin-top: 12px; font-size: 0.9rem; }
+  .msg.ok { color: var(--good); }
+  .msg.error { color: var(--bad); }
+  .req { border-top: 1px solid var(--line); padding: 12px 0; }
+  .req:first-child { border-top: 0; padding-top: 0; }
+  .req-title { font-weight: 600; font-size: 1.05rem; }
+  .req-meta { color: var(--muted); font-size: 0.88rem; }
+  .req-note { margin: 6px 0 0; }
+  .tag {
+    display: inline-block;
+    margin-right: 6px;
+    padding: 1px 8px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    font-size: 0.8rem;
+    color: var(--text);
+  }
+  .empty { color: var(--muted); }
+  .req button.accept { margin-top: 10px; padding: 6px 12px; font-size: 0.9rem; }
+  #requests, #my-runs { margin-top: 16px; }
+
+  /* Ratings */
+  .rating { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); font-size: 0.92rem; }
+  .rating p { margin: 6px 0 0; }
+  .rating-line { margin-top: 6px; }
+  details.rate summary { cursor: pointer; color: var(--accent); font-weight: 600; }
+  details.rate[open] summary { margin-bottom: 8px; }
+  .stars { margin: 4px 0 8px; }
+  .stars button { margin: 0 4px 0 0; padding: 0 2px; background: none; color: var(--muted); font-size: 1.7rem; line-height: 1; }
+  .stars button.on { color: #f5c542; }
+  .tags { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-bottom: 8px; }
+  .tags label { display: inline-flex; align-items: center; gap: 4px; margin: 0; color: var(--text); font-size: 0.9rem; }
+  .tags input { width: auto; }
+  .rating button.submit-rating { margin-top: 10px; padding: 6px 14px; font-size: 0.9rem; }
+
+  /* Profile and rankings */
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin: 12px 0; }
+  .stat { border: 1px solid var(--line); border-radius: 10px; padding: 10px; text-align: center; }
+  .stat-value { font-size: 1.5rem; font-weight: 600; }
+  .stat-label { color: var(--muted); font-size: 0.8rem; }
+  .rank-box { margin: 12px 0; padding: 12px; border: 1px solid var(--accent); border-radius: 10px; }
+  .rank-big { font-size: 2rem; font-weight: 700; color: var(--accent); line-height: 1.1; }
+  table.ranking { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 0.92rem; }
+  .ranking th, .ranking td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); }
+  .ranking th { color: var(--muted); font-weight: 600; font-size: 0.8rem; }
+  .ranking tr.me td { background: rgba(110, 168, 254, 0.12); font-weight: 600; }
+  .ranking td.gap { text-align: center; color: var(--muted); }
+  #profile-stats, #leaderboard { margin-top: 12px; }
+</style>
+</head>
+<body>
+<main>
+
+  <header class="top">
+    <div class="brand">
+      <h1>D2 Sherpa</h1>
+      <p class="sub">Find a sherpa for your next Destiny 2 raid, or help someone else clear theirs.</p>
+    </div>
+    <div class="controls">
+      <label for="bungie-id">Bungie ID</label>
+      <input id="bungie-id" placeholder="Guardian#1234" autocomplete="off">
+      <label for="menu">Menu</label>
+      <select id="menu">
+        <option value="home">Home</option>
+        <option value="requests">Requests</option>
+        <option value="open">Open Requests</option>
+        <option value="runs">My Runs</option>
+        <option value="profile">My Profile</option>
+      </select>
+    </div>
+  </header>
+
+  <!-- HOME: edit the welcome text here whenever you like -->
+  <section id="view-home">
+    <h2>Welcome to D2 Sherpa</h2>
+    <p>D2 Sherpa connects Destiny 2 players who want help with raids to experienced players who enjoy teaching them. It's free to use.</p>
+
+    <h3>How it works</h3>
+    <ol>
+      <li><strong>Enter your Bungie ID</strong> in the box at the top right. The site remembers it for next time.</li>
+      <li><strong>Need help?</strong> Choose <em>Requests</em> from the menu and tell us which raid you want to learn and when suits you.</li>
+      <li><strong>Want to teach?</strong> Choose <em>Open Requests</em>, find one you'd like to help with and accept it.</li>
+      <li><strong>Get together.</strong> Message each other on Bungie or Discord to arrange the run, and find it any time under <em>My Runs</em>.</li>
+    </ol>
+
+    <p class="muted">Coming soon: rate each other after a run, so the best sherpas and the best teammates stand out.</p>
+  </section>
+
+  <!-- REQUESTS: post a request for a sherpa -->
+  <section id="view-requests" hidden>
+    <h2>Ask for a sherpa</h2>
+    <form id="request-form">
+      <label for="raid">Raid</label>
+      <select id="raid" required></select>
+
+      <label for="preferred-time">When would suit you?</label>
+      <input id="preferred-time" placeholder="e.g. Saturday evening" required>
+
+      <label for="experience">Your experience with it</label>
+      <select id="experience" required>
+        <option>First time</option>
+        <option>Part-cleared</option>
+        <option>Done it before</option>
+      </select>
+
+      <label for="note">Anything else? (optional)</label>
+      <textarea id="note" placeholder="e.g. I have a mic, I've watched a guide"></textarea>
+
+      <button id="submit" type="submit">Post request</button>
+      <div id="form-message" class="msg" role="status"></div>
+    </form>
+  </section>
+
+  <!-- OPEN REQUESTS: sherpas pick one to accept -->
+  <section id="view-open" hidden>
+    <h2>Open requests</h2>
+    <p class="muted">Find one you'd like to help with and press accept. You'll be added as the sherpa using the Bungie ID at the top.</p>
+    <div id="open-message" class="msg" role="status"></div>
+    <div id="requests"><span class="empty">Loading...</span></div>
+  </section>
+
+  <!-- MY RUNS: runs you're part of -->
+  <section id="view-runs" hidden>
+    <h2>My runs</h2>
+    <div id="runs-message" class="msg" role="status"></div>
+    <div id="my-runs"></div>
+  </section>
+
+  <!-- MY PROFILE: your stats, plus how you rank against other sherpas -->
+  <div id="view-profile" hidden>
+    <section>
+      <h2>My profile</h2>
+      <div id="profile-message" class="msg" role="status"></div>
+      <div id="profile-stats"></div>
+    </section>
+    <section>
+      <h2>Sherpa rankings</h2>
+      <div id="leaderboard"></div>
+    </section>
+  </div>
+
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+  // ---- 1. Your Supabase details ----
+  const SUPABASE_URL = 'https://abskuadcnzvwhqtgdxhr.supabase.co';
+  const SUPABASE_ANON_KEY = 'sb_publishable_SYfWS6KILw-NHgGTjW9Myw_VDiUagfW';
+
+  // ---- 2. The raid list. Edit this so it matches what is in the game now. ----
+  const RAIDS = [
+    'Leviathan',
+    'Last Wish',
+    'Garden of Salvation',
+    'Deep Stone Crypt',
+    'Vault of Glass',
+    "Vow of the Disciple",
+    "King's Fall",
+    'Root of Nightmares',
+    "Crota's End",
+    "Salvation's Edge",
+    'Desert Perpetual',
+    'Other / not listed'
+  ];
+
+  // ---- 3. Rating tags (these must match the list inside ratings-step.sql) ----
+  const SHERPA_TAGS = ['Clear explanations', 'Patient', 'On time', 'Respectful'];   // a learner rating a sherpa
+  const LEARNER_TAGS = ['Listened', 'Prepared', 'On time', 'Respectful'];            // a sherpa rating a learner
+
+  // ---- 4. Ranking: how many ratings a sherpa needs before they get a rank ----
+  // Set this to 1 while you are testing, then raise it (3 or more) when real people use it.
+  const MIN_RATINGS_TO_RANK = 3;
+
+  const $ = (id) => document.getElementById(id);
+  const configured = !SUPABASE_URL.startsWith('PASTE') && !SUPABASE_ANON_KEY.startsWith('PASTE');
+  const db = configured ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+
+  // Fill the raid dropdown from the list above.
+  for (const raid of RAIDS) {
+    const option = document.createElement('option');
+    option.textContent = raid;
+    $('raid').appendChild(option);
+  }
+
+  // ---- Menu: show one section at a time ----
+  const VIEWS = ['home', 'requests', 'open', 'runs', 'profile'];
+  let currentView = 'home';
+
+  function showView(name) {
+    currentView = name;
+    for (const view of VIEWS) $('view-' + view).hidden = (view !== name);
+    $('menu').value = name;
+    if (name === 'open') loadRequests();
+    if (name === 'runs') loadMyRuns();
+    if (name === 'profile') loadProfile();
+  }
+
+  $('menu').addEventListener('change', () => showView($('menu').value));
+
+  // ---- Small helpers ----
+  function setMessage(id, text, isError) {
+    const box = $(id);
+    box.textContent = text;
+    box.className = isError ? 'msg error' : 'msg ok';
+  }
+
+  // Bungie names look like Guardian#1234 (a name, a #, then four digits).
+  function isValidBungieName(name) {
+    return /^.{1,32}#\d{4}$/.test(name);
+  }
+
+  // Remember the name in this browser so you don't retype it every time.
+  function rememberName(name) {
+    try { localStorage.setItem('bungieName', name); } catch (e) { /* not available, that's fine */ }
+  }
+  function recallName() {
+    try { return localStorage.getItem('bungieName') || ''; } catch (e) { return ''; }
+  }
+
+  // Reads the Bungie ID from the top box. If it's missing or wrong, shows a message and returns null.
+  function requireBungieId(messageId) {
+    const name = $('bungie-id').value.trim();
+    if (!isValidBungieName(name)) {
+      setMessage(messageId, 'Enter your Bungie ID in the box at the top first (like Guardian#1234).', true);
+      $('bungie-id').focus();
+      return null;
+    }
+    rememberName(name);
+    return name;
+  }
+
+  // Small helper to build an element safely (text is never treated as HTML).
+  function el(tag, className, text) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text) node.textContent = text;
+    return node;
+  }
+
+  function timeAgo(isoDate) {
+    const minutes = Math.round((Date.now() - new Date(isoDate).getTime()) / 60000);
+    if (minutes < 1) return 'just now';
+    if (minutes < 60) return minutes + ' min ago';
+    const hours = Math.round(minutes / 60);
+    if (hours < 24) return hours + ' hr ago';
+    const days = Math.round(hours / 24);
+    return days + (days === 1 ? ' day ago' : ' days ago');
+  }
+
+  // Find the player by Bungie name, or add them the first time we see them.
+  async function findOrCreateUser(bungieName) {
+    const { data: existing, error: findError } = await db
+      .from('users')
+      .select('id')
+      .eq('bungie_name', bungieName)
+      .maybeSingle();
+    if (findError) throw findError;
+    if (existing) return existing.id;
+
+    const { data: created, error: createError } = await db
+      .from('users')
+      .insert({ bungie_name: bungieName })
+      .select('id')
+      .single();
+    if (createError) throw createError;
+    return created.id;
+  }
+
+  // ---- Open requests ----
+
+  // Accepting = create a run, then mark the request as accepted.
+  async function acceptRequest(request, sherpaName) {
+    const sherpaId = await findOrCreateUser(sherpaName);
+
+    // The database allows only one run per request, so if another sherpa
+    // got there first, this insert fails with error code 23505 (unique violation).
+    const { error: runError } = await db
+      .from('runs')
+      .insert({ request_id: request.id, sherpa_id: sherpaId });
+    if (runError) {
+      if (runError.code === '23505') throw new Error('Someone else just accepted this request.');
+      throw runError;
+    }
+
+    // Take it off the board by changing its status.
+    const { error: statusError } = await db
+      .from('requests')
+      .update({ status: 'accepted' })
+      .eq('id', request.id)
+      .eq('status', 'open');
+    if (statusError) throw statusError;
+  }
+
+  async function handleAccept(request, button) {
+    const sherpaName = requireBungieId('open-message');
+    if (!sherpaName) return;
+
+    const learnerName = request.learner ? request.learner.bungie_name : '';
+    if (sherpaName.toLowerCase() === learnerName.toLowerCase()) {
+      setMessage('open-message', "You can't accept your own request.", true);
+      return;
+    }
+
+    button.disabled = true;
+    try {
+      await acceptRequest(request, sherpaName);
+      setMessage(
+        'open-message',
+        'Accepted! Message ' + learnerName + ' on Bungie or Discord to arrange your ' +
+          request.raid + ' run. You can find it under My Runs.',
+        false
+      );
+    } catch (err) {
+      setMessage('open-message', err.message, true);
+    }
+    await loadRequests();
+  }
+
+  function renderRequest(request) {
+    const card = el('div', 'req');
+    card.appendChild(el('div', 'req-title', request.raid));
+
+    const meta = el('div', 'req-meta');
+    meta.appendChild(el('span', 'tag', request.experience));
+    const who = request.learner ? request.learner.bungie_name : 'Unknown';
+    meta.appendChild(document.createTextNode(
+      request.preferred_time + ' \u00b7 ' + who + ' \u00b7 ' + timeAgo(request.created_at)
+    ));
+    card.appendChild(meta);
+
+    if (request.note) card.appendChild(el('p', 'req-note', request.note));
+
+    const acceptButton = el('button', 'accept', 'Accept this request');
+    acceptButton.addEventListener('click', () => handleAccept(request, acceptButton));
+    card.appendChild(acceptButton);
+    return card;
+  }
+
+  async function loadRequests() {
+    const list = $('requests');
+    if (!configured) {
+      list.textContent = 'Not connected yet. Add your Supabase details at the top of the script.';
+      return;
+    }
+    const { data, error } = await db
+      .from('requests')
+      .select('id, raid, preferred_time, experience, note, created_at, learner:users!learner_id(bungie_name)')
+      .eq('status', 'open')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      list.textContent = 'Could not load requests: ' + error.message;
+      return;
+    }
+    list.replaceChildren();
+    if (data.length === 0) {
+      list.appendChild(el('span', 'empty', 'No open requests right now. Check back soon.'));
+      return;
+    }
+    for (const request of data) list.appendChild(renderRequest(request));
+  }
+
+  // ---- My runs ----
+
+  // Gets every run this player is part of, as the sherpa or as the learner.
+  async function fetchMyRuns(userId) {
+    // Runs where I am the sherpa (the learner is on the request).
+    const { data: asSherpa, error: sherpaError } = await db
+      .from('runs')
+      .select('id, created_at, request:requests!request_id(raid, preferred_time, experience, note, learner:users!learner_id(bungie_name))')
+      .eq('sherpa_id', userId);
+    if (sherpaError) throw sherpaError;
+
+    // Accepted requests where I am the learner (the sherpa is on the run).
+    const { data: asLearner, error: learnerError } = await db
+      .from('requests')
+      .select('raid, preferred_time, experience, note, runs(id, created_at, sherpa:users!sherpa_id(bungie_name))')
+      .eq('learner_id', userId)
+      .eq('status', 'accepted');
+    if (learnerError) throw learnerError;
+
+    const items = [];
+    for (const run of asSherpa) {
+      if (!run.request) continue;
+      items.push({
+        run_id: run.id,
+        role: 'sherpa',
+        other: run.request.learner ? run.request.learner.bungie_name : 'Unknown',
+        raid: run.request.raid,
+        preferred_time: run.request.preferred_time,
+        experience: run.request.experience,
+        note: run.request.note,
+        created_at: run.created_at
+      });
+    }
+    for (const request of asLearner) {
+      // Depending on how the tables link, "runs" comes back as one item or a list.
+      const run = Array.isArray(request.runs) ? request.runs[0] : request.runs;
+      if (!run) continue;
+      items.push({
+        run_id: run.id,
+        role: 'learner',
+        other: run.sherpa ? run.sherpa.bungie_name : 'Unknown',
+        raid: request.raid,
+        preferred_time: request.preferred_time,
+        experience: request.experience,
+        note: request.note,
+        created_at: run.created_at
+      });
+    }
+    items.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    return items;
+  }
+
+  // ---- Ratings ----
+
+  // Asks the database what rating state each of my runs is in.
+  // (The database only includes the other person's rating once I have rated too.)
+  async function fetchRatingStates(userId) {
+    const { data, error } = await db.rpc('my_rating_states', { p_user_id: userId });
+    if (error) throw error;
+    const byRun = new Map();
+    for (const row of data || []) byRun.set(row.run_id, row);
+    return byRun;
+  }
+
+  // One line showing a rating: stars, tags and comment.
+  function ratingLine(label, rating) {
+    const row = el('div', 'rating-line');
+    row.appendChild(el('strong', null, label + ': '));
+    row.appendChild(document.createTextNode('\u2605'.repeat(rating.stars) + '\u2606'.repeat(5 - rating.stars)));
+    if (rating.tags && rating.tags.length > 0) {
+      const tagRow = el('div');
+      for (const tag of rating.tags) tagRow.appendChild(el('span', 'tag', tag));
+      row.appendChild(tagRow);
+    }
+    if (rating.comment) row.appendChild(el('p', 'req-note', '\u201c' + rating.comment + '\u201d'));
+    return row;
+  }
+
+  // The "Rate ..." form that opens when you click it.
+  function buildRatingForm(item, userId, state) {
+    const details = el('details', 'rate');
+    details.appendChild(el('summary', null, 'Rate ' + item.other));
+
+    // Star buttons: click one to set the score.
+    let stars = 0;
+    const starButtons = [];
+    const starRow = el('div', 'stars');
+    for (let n = 1; n <= 5; n++) {
+      const star = el('button', null, '\u2605');
+      star.type = 'button';
+      star.setAttribute('aria-label', n + (n === 1 ? ' star' : ' stars'));
+      star.addEventListener('click', () => {
+        stars = n;
+        starButtons.forEach((button, index) => button.classList.toggle('on', index < n));
+      });
+      starButtons.push(star);
+      starRow.appendChild(star);
+    }
+    details.appendChild(starRow);
+
+    // Tags: which ones you can tick depends on who you are rating.
+    const tagList = item.role === 'learner' ? SHERPA_TAGS : LEARNER_TAGS;
+    const tagBox = el('div', 'tags');
+    const checkboxes = [];
+    for (const tag of tagList) {
+      const label = document.createElement('label');
+      const box = document.createElement('input');
+      box.type = 'checkbox';
+      box.value = tag;
+      label.appendChild(box);
+      label.appendChild(document.createTextNode(tag));
+      tagBox.appendChild(label);
+      checkboxes.push(box);
+    }
+    details.appendChild(tagBox);
+
+    const comment = document.createElement('textarea');
+    comment.placeholder = 'Anything to add? (optional)';
+    comment.maxLength = 500;
+    details.appendChild(comment);
+
+    const submit = el('button', 'submit-rating', 'Submit rating');
+    submit.type = 'button';
+    const note = el('div', 'msg');
+    details.appendChild(submit);
+    details.appendChild(note);
+
+    submit.addEventListener('click', async () => {
+      if (stars === 0) {
+        note.textContent = 'Choose a star rating first.';
+        note.className = 'msg error';
+        return;
+      }
+      submit.disabled = true;
+      const { error } = await db.rpc('submit_rating', {
+        p_run_id: item.run_id,
+        p_rater_id: userId,
+        p_stars: stars,
+        p_tags: checkboxes.filter((box) => box.checked).map((box) => box.value),
+        p_comment: comment.value.trim()
+      });
+      if (error) {
+        submit.disabled = false;
+        note.textContent = error.code === '23505' ? "You've already rated this run." : error.message;
+        note.className = 'msg error';
+        return;
+      }
+      await loadMyRuns();
+      setMessage(
+        'runs-message',
+        'Rating saved. ' + (state && state.they_rated
+          ? "Both ratings are in, so you can see each other's below."
+          : 'It stays hidden until ' + item.other + ' rates you too.'),
+        false
+      );
+    });
+    return details;
+  }
+
+  // Decides what to show under a run: the form, a "waiting" note, or both ratings.
+  function renderRatingArea(item, state, userId) {
+    const box = el('div', 'rating');
+    if (!state || !state.i_rated) {
+      if (state && state.they_rated) {
+        box.appendChild(el('p', 'muted', item.other + ' has rated you. Rate them to see what they said.'));
+      }
+      box.appendChild(buildRatingForm(item, userId, state));
+    } else if (!state.they_rated) {
+      box.appendChild(ratingLine('You rated ' + item.other, state.mine));
+      box.appendChild(el('p', 'muted', 'Waiting for ' + item.other + ' to rate you. You will see their rating once they do.'));
+    } else {
+      box.appendChild(ratingLine('You rated ' + item.other, state.mine));
+      box.appendChild(ratingLine(item.other + ' rated you', state.theirs));
+    }
+    return box;
+  }
+
+  function renderRun(item, state, userId) {
+    const card = el('div', 'req');
+    card.appendChild(el('div', 'req-title', item.raid));
+
+    const meta = el('div', 'req-meta');
+    meta.appendChild(el('span', 'tag', item.role === 'sherpa' ? 'You are the sherpa' : 'You are the learner'));
+    meta.appendChild(document.createTextNode(
+      'With ' + item.other + ' \u00b7 ' + item.preferred_time + ' \u00b7 ' + item.experience +
+      ' \u00b7 accepted ' + timeAgo(item.created_at)
+    ));
+    card.appendChild(meta);
+
+    if (item.note) card.appendChild(el('p', 'req-note', item.note));
+    card.appendChild(renderRatingArea(item, state, userId));
+    return card;
+  }
+
+  async function loadMyRuns() {
+    const list = $('my-runs');
+    list.replaceChildren();
+    setMessage('runs-message', '', false);
+
+    if (!configured) {
+      setMessage('runs-message', 'Add your Supabase details at the top of the script first.', true);
+      return;
+    }
+    const name = $('bungie-id').value.trim();
+    if (!isValidBungieName(name)) {
+      setMessage('runs-message', 'Enter your Bungie ID in the box at the top to see your runs.', true);
+      return;
+    }
+
+    list.appendChild(el('span', 'empty', 'Loading...'));
+    try {
+      const { data: user, error } = await db
+        .from('users')
+        .select('id')
+        .eq('bungie_name', name)
+        .maybeSingle();
+      if (error) throw error;
+      list.replaceChildren();
+      if (!user) {
+        setMessage('runs-message', 'No player found with that Bungie ID. Check the spelling (capital letters matter), or post or accept a request first.', true);
+        return;
+      }
+
+      const [runs, states] = await Promise.all([fetchMyRuns(user.id), fetchRatingStates(user.id)]);
+      rememberName(name);
+      if (runs.length === 0) {
+        list.appendChild(el('span', 'empty', 'No runs yet. Accept a request, or wait for a sherpa to accept yours.'));
+        return;
+      }
+      for (const item of runs) list.appendChild(renderRun(item, states.get(item.run_id), user.id));
+    } catch (err) {
+      list.replaceChildren();
+      setMessage('runs-message', 'Something went wrong: ' + err.message, true);
+    }
+  }
+
+  // ---- My profile and sherpa rankings ----
+
+  function statTile(value, label) {
+    const tile = el('div', 'stat');
+    tile.appendChild(el('div', 'stat-value', String(value)));
+    tile.appendChild(el('div', 'stat-label', label));
+    return tile;
+  }
+
+  function renderProfile(container, name, profile) {
+    if (!isValidBungieName(name)) {
+      container.appendChild(el('span', 'empty', 'Enter your Bungie ID in the box at the top to see your profile.'));
+      return;
+    }
+    if (!profile) {
+      container.appendChild(el('span', 'empty', 'No player found with that Bungie ID yet. Post a request or accept one to get started.'));
+      return;
+    }
+
+    container.appendChild(el('div', 'req-title', name));
+    if (profile.joined) {
+      container.appendChild(el('div', 'req-meta', 'Joined ' + new Date(profile.joined).toLocaleDateString()));
+    }
+
+    // Where you stand in the ranking
+    const rankBox = el('div', 'rank-box');
+    if (profile.runs_as_sherpa === 0) {
+      rankBox.textContent = "You haven't taught a run yet. Accept a request under Open Requests to start building your sherpa record.";
+    } else if (profile.rank) {
+      rankBox.appendChild(el('div', 'rank-big', '#' + profile.rank));
+      rankBox.appendChild(el('div', 'muted',
+        'of ' + profile.ranked_sherpas + ' ranked ' + (profile.ranked_sherpas === 1 ? 'sherpa' : 'sherpas')));
+    } else {
+      const needed = profile.min_ratings - profile.sherpa_ratings;
+      rankBox.textContent = 'Not ranked yet. You need ' + needed + ' more rating' + (needed === 1 ? '' : 's') +
+        ' as a sherpa to join the rankings (minimum ' + profile.min_ratings + ').';
+    }
+    container.appendChild(rankBox);
+
+    // Your numbers
+    const grid = el('div', 'stats');
+    grid.appendChild(statTile(profile.runs_as_sherpa, 'Runs taught'));
+    grid.appendChild(statTile(profile.sherpa_ratings, 'Ratings received'));
+    grid.appendChild(statTile(profile.sherpa_avg === null ? '\u2013' : Number(profile.sherpa_avg).toFixed(2), 'Average rating'));
+    grid.appendChild(statTile(profile.runs_as_learner, 'Runs as learner'));
+    container.appendChild(grid);
+
+    if (profile.top_tags && profile.top_tags.length > 0) {
+      container.appendChild(el('h3', null, 'What learners say about you'));
+      const tagRow = el('div');
+      for (const item of profile.top_tags) tagRow.appendChild(el('span', 'tag', item.tag + ' \u00d7' + item.count));
+      container.appendChild(tagRow);
+    }
+
+    if (profile.runs_as_learner > 0) {
+      container.appendChild(el('p', 'muted', profile.learner_ratings > 0
+        ? 'As a learner, sherpas rate you ' + Number(profile.learner_avg).toFixed(2) + ' on average (' +
+          profile.learner_ratings + ' rating' + (profile.learner_ratings === 1 ? '' : 's') + ').'
+        : 'As a learner, no sherpa ratings for you yet.'));
+    }
+    container.appendChild(el('p', 'muted', 'Only ratings that both people have submitted count towards these numbers.'));
+  }
+
+  function rankRow(row, isMe) {
+    const tr = el('tr', isMe ? 'me' : null);
+    tr.appendChild(el('td', null, '#' + row.rank));
+    tr.appendChild(el('td', null, row.bungie_name + (isMe ? ' (you)' : '')));
+    tr.appendChild(el('td', null, Number(row.avg_stars).toFixed(2) + ' \u2605'));
+    tr.appendChild(el('td', null, String(row.rating_count)));
+    tr.appendChild(el('td', null, String(row.runs_taught)));
+    return tr;
+  }
+
+  function renderLeaderboard(container, rows, myUserId) {
+    const ranked = rows.filter((row) => row.rank !== null);
+    const waiting = rows.length - ranked.length;
+
+    container.appendChild(el('p', 'muted',
+      'Sherpas need at least ' + MIN_RATINGS_TO_RANK + ' ratings to be ranked. Only ratings that both people have submitted count.'));
+
+    if (ranked.length === 0) {
+      container.appendChild(el('span', 'empty', 'No sherpas are ranked yet.'));
+    } else {
+      const table = el('table', 'ranking');
+      const header = el('tr');
+      for (const title of ['Rank', 'Sherpa', 'Average', 'Ratings', 'Runs']) header.appendChild(el('th', null, title));
+      table.appendChild(header);
+
+      // Show the top 10, plus your own row if you are further down.
+      const top = ranked.slice(0, 10);
+      for (const row of top) table.appendChild(rankRow(row, row.user_id === myUserId));
+      const mine = ranked.find((row) => row.user_id === myUserId);
+      if (mine && !top.includes(mine)) {
+        const gapRow = el('tr');
+        const gapCell = el('td', 'gap', '\u2026');
+        gapCell.colSpan = 5;
+        gapRow.appendChild(gapCell);
+        table.appendChild(gapRow);
+        table.appendChild(rankRow(mine, true));
+      }
+      container.appendChild(table);
+    }
+
+    if (waiting > 0) {
+      container.appendChild(el('p', 'muted',
+        waiting + (waiting === 1 ? ' more sherpa is' : ' more sherpas are') + ' waiting for enough ratings to be ranked.'));
+    }
+  }
+
+  async function loadProfile() {
+    const stats = $('profile-stats');
+    const board = $('leaderboard');
+    stats.replaceChildren();
+    board.replaceChildren();
+    setMessage('profile-message', '', false);
+
+    if (!configured) {
+      setMessage('profile-message', 'Add your Supabase details at the top of the script first.', true);
+      return;
+    }
+
+    stats.appendChild(el('span', 'empty', 'Loading...'));
+    board.appendChild(el('span', 'empty', 'Loading...'));
+
+    const name = $('bungie-id').value.trim();
+    try {
+      // Look up who you are (if a valid Bungie ID is entered).
+      let userId = null;
+      if (isValidBungieName(name)) {
+        const { data: user, error } = await db
+          .from('users')
+          .select('id')
+          .eq('bungie_name', name)
+          .maybeSingle();
+        if (error) throw error;
+        userId = user ? user.id : null;
+      }
+
+      // The ranking is the same for everyone.
+      const boardResult = await db.rpc('sherpa_leaderboard', { p_min_ratings: MIN_RATINGS_TO_RANK });
+      if (boardResult.error) throw boardResult.error;
+
+      // Your own profile.
+      let profile = null;
+      if (userId) {
+        const profileResult = await db.rpc('my_profile', { p_user_id: userId, p_min_ratings: MIN_RATINGS_TO_RANK });
+        if (profileResult.error) throw profileResult.error;
+        profile = profileResult.data;
+        rememberName(name);
+      }
+
+      stats.replaceChildren();
+      board.replaceChildren();
+      renderProfile(stats, name, profile);
+      renderLeaderboard(board, boardResult.data || [], userId);
+    } catch (err) {
+      stats.replaceChildren();
+      board.replaceChildren();
+      setMessage('profile-message', 'Something went wrong: ' + err.message, true);
+    }
+  }
+
+  // ---- Requests: post a new request ----
+  $('request-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!configured) {
+      setMessage('form-message', 'Add your Supabase details at the top of the script first.', true);
+      return;
+    }
+
+    const bungieName = requireBungieId('form-message');
+    if (!bungieName) return;
+
+    const button = $('submit');
+    button.disabled = true;
+    setMessage('form-message', '', false);
+
+    try {
+      const learnerId = await findOrCreateUser(bungieName);
+      const { error } = await db.from('requests').insert({
+        learner_id: learnerId,
+        raid: $('raid').value,
+        preferred_time: $('preferred-time').value.trim(),
+        experience: $('experience').value,
+        note: $('note').value.trim() || null
+      });
+      if (error) throw error;
+
+      setMessage('form-message', 'Request posted! Sherpas can now see it under Open Requests.', false);
+      $('preferred-time').value = '';
+      $('note').value = '';
+    } catch (err) {
+      setMessage('form-message', 'Something went wrong: ' + err.message, true);
+    } finally {
+      button.disabled = false;
+    }
+  });
+
+  // ---- Top box: remember the Bungie ID, refresh My Runs if it's open ----
+  $('bungie-id').addEventListener('change', () => {
+    const name = $('bungie-id').value.trim();
+    if (isValidBungieName(name)) rememberName(name);
+    if (currentView === 'runs') loadMyRuns();
+    if (currentView === 'profile') loadProfile();
+  });
+
+  // ---- Start ----
+  $('bungie-id').value = recallName();
+  showView('home');
+</script>
+</body>
+</html>
