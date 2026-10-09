@@ -124,6 +124,13 @@
   .ranking tr.me td { background: rgba(110, 168, 254, 0.12); font-weight: 600; }
   .ranking td.gap { text-align: center; color: var(--muted); }
   #profile-stats, #leaderboard { margin-top: 12px; }
+
+  /* Buttons and links for completing, cancelling, blocking and reporting */
+  .req button.small { margin-top: 10px; padding: 6px 12px; font-size: 0.9rem; }
+  button.outline { background: none; border: 1px solid var(--accent); color: var(--accent); }
+  button.link { margin: 0 12px 0 0; padding: 0; background: none; color: var(--muted); font-weight: 400; font-size: 0.85rem; text-decoration: underline; }
+  .actions { margin-top: 8px; }
+  details.rate select { margin-bottom: 8px; }
 </style>
 </head>
 <body>
@@ -158,10 +165,10 @@
       <li><strong>Enter your Bungie ID</strong> in the box at the top right. The site remembers it for next time.</li>
       <li><strong>Need help?</strong> Choose <em>Requests</em> from the menu and tell us which raid you want to learn and when suits you.</li>
       <li><strong>Want to teach?</strong> Choose <em>Open Requests</em>, find one you'd like to help with and accept it.</li>
-      <li><strong>Get together.</strong> Message each other on Bungie or Discord to arrange the run, and find it any time under <em>My Runs</em>.</li>
+      <li><strong>Get together.</strong> Message each other on Bungie or Discord to arrange the run, and find it any time under <em>My Runs</em>. Once you've played it, mark it as completed there and rate each other.</li>
     </ol>
 
-    <p class="muted">Coming soon: rate each other after a run, so the best sherpas and the best teammates stand out.</p>
+    <p class="muted">Ratings stay hidden until you've both rated, and the best sherpas climb the rankings under <em>My Profile</em>.</p>
   </section>
 
   <!-- REQUESTS: post a request for a sherpa -->
@@ -193,6 +200,10 @@
   <section id="view-open" hidden>
     <h2>Open requests</h2>
     <p class="muted">Find one you'd like to help with and press accept. You'll be added as the sherpa using the Bungie ID at the top.</p>
+    <label for="raid-filter">Filter by raid</label>
+    <select id="raid-filter">
+      <option value="">All raids</option>
+    </select>
     <div id="open-message" class="msg" role="status"></div>
     <div id="requests"><span class="empty">Loading...</span></div>
   </section>
@@ -201,6 +212,7 @@
   <section id="view-runs" hidden>
     <h2>My runs</h2>
     <div id="runs-message" class="msg" role="status"></div>
+    <div id="my-requests"></div>
     <div id="my-runs"></div>
   </section>
 
@@ -214,6 +226,11 @@
     <section>
       <h2>Sherpa rankings</h2>
       <div id="leaderboard"></div>
+    </section>
+    <section>
+      <h2>Blocked players</h2>
+      <div id="blocked-message" class="msg" role="status"></div>
+      <div id="blocked-list"></div>
     </section>
   </div>
 
@@ -249,6 +266,9 @@
   // Set this to 1 while you are testing, then raise it (3 or more) when real people use it.
   const MIN_RATINGS_TO_RANK = 3;
 
+  // ---- 5. Reasons people can give when reporting someone (must match report_user in quickwins-step.sql) ----
+  const REPORT_REASONS = ['Toxic or abusive behaviour', 'Harassment', 'No-show', 'Other'];
+
   const $ = (id) => document.getElementById(id);
   const configured = !SUPABASE_URL.startsWith('PASTE') && !SUPABASE_ANON_KEY.startsWith('PASTE');
   const db = configured ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
@@ -258,7 +278,14 @@
     const option = document.createElement('option');
     option.textContent = raid;
     $('raid').appendChild(option);
+
+    // The same list feeds the "Filter by raid" dropdown on Open Requests.
+    const filterOption = document.createElement('option');
+    filterOption.textContent = raid;
+    $('raid-filter').appendChild(filterOption);
   }
+
+  $('raid-filter').addEventListener('change', loadRequests);
 
   // ---- Menu: show one section at a time ----
   const VIEWS = ['home', 'requests', 'open', 'runs', 'profile'];
@@ -346,27 +373,12 @@
 
   // ---- Open requests ----
 
-  // Accepting = create a run, then mark the request as accepted.
+  // Accepting is done by one database function, so it either fully happens or not at all.
+  // The database also checks the request is still open and that nobody is blocked.
   async function acceptRequest(request, sherpaName) {
     const sherpaId = await findOrCreateUser(sherpaName);
-
-    // The database allows only one run per request, so if another sherpa
-    // got there first, this insert fails with error code 23505 (unique violation).
-    const { error: runError } = await db
-      .from('runs')
-      .insert({ request_id: request.id, sherpa_id: sherpaId });
-    if (runError) {
-      if (runError.code === '23505') throw new Error('Someone else just accepted this request.');
-      throw runError;
-    }
-
-    // Take it off the board by changing its status.
-    const { error: statusError } = await db
-      .from('requests')
-      .update({ status: 'accepted' })
-      .eq('id', request.id)
-      .eq('status', 'open');
-    if (statusError) throw statusError;
+    const { error } = await db.rpc('accept_request', { p_request_id: request.id, p_sherpa_id: sherpaId });
+    if (error) throw error;
   }
 
   async function handleAccept(request, button) {
@@ -411,6 +423,12 @@
     const acceptButton = el('button', 'accept', 'Accept this request');
     acceptButton.addEventListener('click', () => handleAccept(request, acceptButton));
     card.appendChild(acceptButton);
+
+    if (request.learner) {
+      card.appendChild(buildSafetyActions(
+        { id: request.learner.id, name: request.learner.bungie_name }, null, 'open-message', loadRequests
+      ));
+    }
     return card;
   }
 
@@ -422,7 +440,7 @@
     }
     const { data, error } = await db
       .from('requests')
-      .select('id, raid, preferred_time, experience, note, created_at, learner:users!learner_id(bungie_name)')
+      .select('id, raid, preferred_time, experience, note, created_at, learner:users!learner_id(id, bungie_name)')
       .eq('status', 'open')
       .order('created_at', { ascending: false });
 
@@ -431,11 +449,20 @@
       return;
     }
     list.replaceChildren();
-    if (data.length === 0) {
-      list.appendChild(el('span', 'empty', 'No open requests right now. Check back soon.'));
+    // Apply the raid filter, and hide requests from people I have blocked.
+    const blocked = await currentBlockedIds();
+    const raidFilter = $('raid-filter').value;
+    const visible = data.filter((request) =>
+      (!raidFilter || request.raid === raidFilter) &&
+      !(request.learner && blocked.has(request.learner.id)));
+
+    if (visible.length === 0) {
+      list.appendChild(el('span', 'empty', raidFilter
+        ? 'No open requests for ' + raidFilter + ' right now.'
+        : 'No open requests right now. Check back soon.'));
       return;
     }
-    for (const request of data) list.appendChild(renderRequest(request));
+    for (const request of visible) list.appendChild(renderRequest(request));
   }
 
   // ---- My runs ----
@@ -445,14 +472,14 @@
     // Runs where I am the sherpa (the learner is on the request).
     const { data: asSherpa, error: sherpaError } = await db
       .from('runs')
-      .select('id, created_at, request:requests!request_id(raid, preferred_time, experience, note, learner:users!learner_id(bungie_name))')
+      .select('id, created_at, completed_at, request:requests!request_id(raid, preferred_time, experience, note, learner:users!learner_id(id, bungie_name))')
       .eq('sherpa_id', userId);
     if (sherpaError) throw sherpaError;
 
     // Accepted requests where I am the learner (the sherpa is on the run).
     const { data: asLearner, error: learnerError } = await db
       .from('requests')
-      .select('raid, preferred_time, experience, note, runs(id, created_at, sherpa:users!sherpa_id(bungie_name))')
+      .select('raid, preferred_time, experience, note, runs(id, created_at, completed_at, sherpa:users!sherpa_id(id, bungie_name))')
       .eq('learner_id', userId)
       .eq('status', 'accepted');
     if (learnerError) throw learnerError;
@@ -464,6 +491,8 @@
         run_id: run.id,
         role: 'sherpa',
         other: run.request.learner ? run.request.learner.bungie_name : 'Unknown',
+        other_id: run.request.learner ? run.request.learner.id : null,
+        completed_at: run.completed_at,
         raid: run.request.raid,
         preferred_time: run.request.preferred_time,
         experience: run.request.experience,
@@ -479,6 +508,8 @@
         run_id: run.id,
         role: 'learner',
         other: run.sherpa ? run.sherpa.bungie_name : 'Unknown',
+        other_id: run.sherpa ? run.sherpa.id : null,
+        completed_at: run.completed_at,
         raid: request.raid,
         preferred_time: request.preferred_time,
         experience: request.experience,
@@ -488,6 +519,190 @@
     }
     items.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
     return items;
+  }
+
+  // ---- Safety: block and report ----
+
+  // The ids of people I have blocked, used to hide their requests. Best effort:
+  // if anything goes wrong we simply don't hide anyone.
+  async function currentBlockedIds() {
+    const ids = new Set();
+    try {
+      const name = $('bungie-id').value.trim();
+      if (!isValidBungieName(name)) return ids;
+      const { data: user } = await db.from('users').select('id').eq('bungie_name', name).maybeSingle();
+      if (!user) return ids;
+      const { data } = await db.rpc('my_blocks', { p_user_id: user.id });
+      for (const row of data || []) ids.add(row.user_id);
+    } catch (err) { /* ignore */ }
+    return ids;
+  }
+
+  // "Block" and "Report" links shown under a person's request or run.
+  // other = { id, name }. messageId = which message box to show feedback in.
+  function buildSafetyActions(other, runId, messageId, afterBlock) {
+    const wrap = el('div', 'actions');
+
+    const blockButton = el('button', 'link', 'Block ' + other.name);
+    blockButton.type = 'button';
+    blockButton.addEventListener('click', async () => {
+      const myName = requireBungieId(messageId);
+      if (!myName) return;
+      if (!window.confirm("Block " + other.name + "? They won't be able to accept your requests, and you won't see theirs.")) return;
+      try {
+        const myId = await findOrCreateUser(myName);
+        const { error } = await db.rpc('block_user', { p_blocker_id: myId, p_blocked_id: other.id });
+        if (error) throw error;
+        await afterBlock();
+        setMessage(messageId, 'Blocked ' + other.name + '. You can undo this under My Profile.', false);
+      } catch (err) {
+        setMessage(messageId, err.message, true);
+      }
+    });
+    wrap.appendChild(blockButton);
+
+    const report = el('details', 'rate');
+    report.appendChild(el('summary', null, 'Report ' + other.name));
+
+    const reason = document.createElement('select');
+    for (const text of REPORT_REASONS) {
+      const option = document.createElement('option');
+      option.textContent = text;
+      reason.appendChild(option);
+    }
+    report.appendChild(reason);
+
+    const extra = document.createElement('textarea');
+    extra.placeholder = 'What happened? (optional)';
+    extra.maxLength = 500;
+    report.appendChild(extra);
+
+    const send = el('button', 'small', 'Send report');
+    send.type = 'button';
+    report.appendChild(send);
+
+    send.addEventListener('click', async () => {
+      const myName = requireBungieId(messageId);
+      if (!myName) return;
+      send.disabled = true;
+      try {
+        const myId = await findOrCreateUser(myName);
+        const { error } = await db.rpc('report_user', {
+          p_reporter_id: myId,
+          p_reported_id: other.id,
+          p_run_id: runId || null,
+          p_reason: reason.value,
+          p_details: extra.value.trim()
+        });
+        if (error) throw error;
+        extra.value = '';
+        report.open = false;
+        setMessage(messageId, 'Report sent. Thank you.', false);
+      } catch (err) {
+        setMessage(messageId, err.message, true);
+      }
+      send.disabled = false;
+    });
+    wrap.appendChild(report);
+    return wrap;
+  }
+
+  // The list of people I have blocked, with an Unblock button for each.
+  async function fetchBlocked(userId) {
+    const { data, error } = await db.rpc('my_blocks', { p_user_id: userId });
+    if (error) throw error;
+    return data || [];
+  }
+
+  function renderBlocked(container, blocked, userId) {
+    container.replaceChildren();
+    if (blocked.length === 0) {
+      container.appendChild(el('span', 'empty', "You haven't blocked anyone."));
+      return;
+    }
+    for (const person of blocked) {
+      const row = el('div', 'req');
+      row.appendChild(el('div', 'req-title', person.bungie_name));
+      const unblock = el('button', 'small outline', 'Unblock');
+      unblock.type = 'button';
+      unblock.addEventListener('click', async () => {
+        unblock.disabled = true;
+        const { error } = await db.rpc('unblock_user', { p_blocker_id: userId, p_blocked_id: person.user_id });
+        if (error) {
+          setMessage('blocked-message', error.message, true);
+          unblock.disabled = false;
+          return;
+        }
+        await loadProfile();
+        setMessage('blocked-message', 'Unblocked ' + person.bungie_name + '.', false);
+      });
+      row.appendChild(unblock);
+      container.appendChild(row);
+    }
+  }
+
+  // ---- Cancel a request, and mark a run as completed ----
+
+  async function fetchMyOpenRequests(userId) {
+    const { data, error } = await db
+      .from('requests')
+      .select('id, raid, preferred_time, experience, note, created_at')
+      .eq('learner_id', userId)
+      .eq('status', 'open')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+  }
+
+  async function cancelRequest(request, userId, button) {
+    if (!window.confirm('Cancel your ' + request.raid + ' request?')) return;
+    button.disabled = true;
+    const { error } = await db.rpc('cancel_request', { p_request_id: request.id, p_user_id: userId });
+    if (error) {
+      setMessage('runs-message', error.message, true);
+      button.disabled = false;
+      return;
+    }
+    await loadMyRuns();
+    setMessage('runs-message', 'Request cancelled.', false);
+  }
+
+  // Shows my requests that are still waiting for a sherpa, each with a Cancel button.
+  function renderMyRequests(container, requests, userId) {
+    container.replaceChildren();
+    if (requests.length === 0) return;
+
+    container.appendChild(el('h3', null, 'Waiting for a sherpa'));
+    for (const request of requests) {
+      const card = el('div', 'req');
+      card.appendChild(el('div', 'req-title', request.raid));
+
+      const meta = el('div', 'req-meta');
+      meta.appendChild(el('span', 'tag', request.experience));
+      meta.appendChild(document.createTextNode(request.preferred_time + ' \u00b7 posted ' + timeAgo(request.created_at)));
+      card.appendChild(meta);
+
+      if (request.note) card.appendChild(el('p', 'req-note', request.note));
+
+      const cancel = el('button', 'small outline', 'Cancel request');
+      cancel.type = 'button';
+      cancel.addEventListener('click', () => cancelRequest(request, userId, cancel));
+      card.appendChild(cancel);
+      container.appendChild(card);
+    }
+    container.appendChild(el('h3', null, 'Your runs'));
+  }
+
+  async function markCompleted(item, userId, button) {
+    button.disabled = true;
+    const { error } = await db.rpc('complete_run', { p_run_id: item.run_id, p_user_id: userId });
+    if (error) {
+      setMessage('runs-message', error.message, true);
+      button.disabled = false;
+      return;
+    }
+    await loadMyRuns();
+    setMessage('runs-message', 'Run marked as completed. You can now rate ' + item.other + '.', false);
   }
 
   // ---- Ratings ----
@@ -621,6 +836,7 @@
 
     const meta = el('div', 'req-meta');
     meta.appendChild(el('span', 'tag', item.role === 'sherpa' ? 'You are the sherpa' : 'You are the learner'));
+    if (item.completed_at) meta.appendChild(el('span', 'tag', 'Completed'));
     meta.appendChild(document.createTextNode(
       'With ' + item.other + ' \u00b7 ' + item.preferred_time + ' \u00b7 ' + item.experience +
       ' \u00b7 accepted ' + timeAgo(item.created_at)
@@ -628,7 +844,24 @@
     card.appendChild(meta);
 
     if (item.note) card.appendChild(el('p', 'req-note', item.note));
-    card.appendChild(renderRatingArea(item, state, userId));
+    if (item.completed_at) {
+      // Ratings only open once the run has been completed.
+      card.appendChild(renderRatingArea(item, state, userId));
+    } else {
+      const waiting = el('div', 'rating');
+      waiting.appendChild(el('p', 'muted', 'Played it? Mark the run as completed to unlock ratings.'));
+      const done = el('button', 'small outline', 'Mark run as completed');
+      done.type = 'button';
+      done.addEventListener('click', () => markCompleted(item, userId, done));
+      waiting.appendChild(done);
+      card.appendChild(waiting);
+    }
+
+    if (item.other_id) {
+      card.appendChild(buildSafetyActions(
+        { id: item.other_id, name: item.other }, item.run_id, 'runs-message', async () => {}
+      ));
+    }
     return card;
   }
 
